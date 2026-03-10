@@ -13,7 +13,6 @@ To set up a new experiment, work with the user to:
    - `AGENTS.md` — the experiment protocol (hardware, parameters, loop rules).
    - `train.py` — the file you modify. Model config, optimizer, training loop.
    - `docs/adjustable_params.md` — x-transformers parameter reference.
-   - `x-transformers/x_transformers/x_transformers.py` — the x-transformers core (reference, do not modify).
 4. **Verify data exists**: Check that `./x-transformers/data/enwik8.gz` exists. If not, download it.
 5. **Verify dependencies**: Run `python -c "from x_transformers import TransformerWrapper"` to check. If missing deps, install:
    ```bash

@@ -33,7 +33,7 @@ cd autoresearch-x-transformers
 
 # 2. Set up your Python environment (conda, venv, uv — your choice)
 #    Then install dependencies:
-pip install torch numpy matplotlib pandas loguru einx ema-pytorch adam-atan2-pytorch
+pip install x-transformers
 
 # 3. Verify data exists
 ls x-transformers/data/enwik8.gz   # should exist from submodule
@@ -68,8 +68,6 @@ The `program.md` file is the "skill" that drives the autonomous agent. `AGENTS.m
 ```
 train.py                — model, optimizer, training loop (agent modifies this)
 program.md              — agent instructions
-AGENTS.md               — detailed experiment protocol
-analysis.py             — notebook for visualizing results (jupytext percent format)
 analysis.ipynb          — generated notebook from analysis.py
 docs/
   adjustable_params.md  — x-transformers parameter reference
