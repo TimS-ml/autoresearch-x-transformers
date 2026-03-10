@@ -2,7 +2,7 @@
 Autoresearch pretraining script using x-transformers.
 Single-GPU, single-file, time-budgeted training on enwik8.
 
-Hardware: Any NVIDIA GPU with >= 6 GB VRAM (tested on RTX 4060 Laptop 8 GB).
+Hardware: Any NVIDIA GPU with >= 8 GB VRAM (tested on RTX 4090 Laptop).
           FP8 supported on Ada Lovelace / Hopper / Blackwell (SM89+).
 Precision: BF16 (default), FP8 via NVIDIA Transformer Engine (optional)
 Optimizer: MuonAdamAtan2 (Muon for matrix params, AdamAtan2 for rest)

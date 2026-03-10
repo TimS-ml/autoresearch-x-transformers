@@ -10,7 +10,7 @@ To set up a new experiment, work with the user to:
 1. **Agree on a run tag**: propose a tag based on today's date (e.g. `mar10`). The branch `autoresearch/<tag>` must not already exist — this is a fresh run.
 2. **Create the branch**: `git checkout -b autoresearch/<tag>` from current HEAD.
 3. **Read the in-scope files**: The repo is small. Read these files for full context:
-   - `AGENTS.md` — the experiment protocol (hardware, parameters, loop rules).
+   - `AGENTS.md` — **machine-specific overrides** (Python path, GPU VRAM, precision, etc.). Always read this first and follow its settings. This file is not committed — it is customized per machine.
    - `train.py` — the file you modify. Model config, optimizer, training loop.
    - `docs/adjustable_params.md` — x-transformers parameter reference.
 4. **Verify data exists**: Check that `./x-transformers/data/enwik8.gz` exists. If not, download it.

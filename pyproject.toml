@@ -13,6 +13,7 @@ dependencies = [
     "einx",
     "ema-pytorch",
     "adam-atan2-pytorch",
+    "x-transformers @ git+https://github.com/TimS-ml/x-transformers.git",
 ]
 
 [project.optional-dependencies]

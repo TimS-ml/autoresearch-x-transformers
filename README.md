@@ -1,8 +1,10 @@
-Autonomous LLM-driven research on character-level language modeling using [x-transformers](https://github.com/lucidrains/x-transformers). Runs on any NVIDIA GPU with >= 6 GB VRAM. FP8 training supported on Ada Lovelace / Hopper / Blackwell GPUs.
-
-# autoresearch (x-transformers edition)
+Autonomous LLM-driven research on character-level language modeling using my fork of [x-transformers](https://github.com/TimS-ml/x-transformers). Runs on any NVIDIA GPU with under 8 GB VRAM. FP8 training supported on Ada Lovelace / Hopper / Blackwell GPUs.
 
 ![teaser](progress.png)
+
+![memory_usage](memory.png)
+
+# autoresearch (x-transformers edition)
 
 *One day, frontier AI research used to be done by meat computers in between eating, sleeping, having other fun, and synchronizing once in a while using sound wave interconnect in the ritual of "group meeting". That era is long gone. Research is now entirely the domain of autonomous swarms of AI agents running across compute cluster megastructures in the skies. The agents claim that we are now in the 10,205th generation of the code base, in any case no one could tell if that's right or wrong as the "code" is now a self-modifying binary that has grown beyond human comprehension. This repo is the story of how it all began. -@karpathy, March 2026*.
 
@@ -24,41 +26,53 @@ By design, training runs for a **fixed 5-minute time budget** (wall clock, exclu
 
 ## Quick start
 
-**Requirements:** An NVIDIA GPU (>= 6 GB VRAM), Python 3.10+.
+**Requirements:** A single NVIDIA GPU (>= 8 GB VRAM), Python 3.10+, [uv](https://docs.astral.sh/uv/).
 
 ```bash
-# 1. Clone with submodule
-git clone --recurse-submodules <this-repo>
-cd autoresearch-x-transformers
+# 1. Install uv project manager (if you don't already have it)
+curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# 2. Set up your Python environment (conda, venv, uv — your choice)
-#    Then install dependencies:
-pip install x-transformers
+# 2. Clone and set up my fork of x-transformers with fp8 support
+git clone https://github.com/TimS-ml/x-transformers
+uv sync
 
 # 3. Verify data exists
-ls x-transformers/data/enwik8.gz   # should exist from submodule
+ls x-transformers/data/enwik8.gz
 
 # 4. Verify imports work
-python -c "from x_transformers import TransformerWrapper; print('OK')"
+uv run python -c "from x_transformers import TransformerWrapper; print('OK')"
 
 # 5. Run a single training experiment (~5 min)
-python train.py
+uv run train.py
 ```
 
-**Important:** Update `program.md` with the Python path for your environment (e.g. the output of `which python`).
+If the above commands all work ok, your setup is working and you can go into autonomous research mode.
 
-Optional FP8 support (Ada Lovelace / Hopper / Blackwell):
+### Optional: FP8 training
+
+FP8 requires an **Ada Lovelace / Hopper / Blackwell** GPU (RTX 40xx, A100, H100, etc.) and NVIDIA's [Transformer Engine](https://github.com/NVIDIA/TransformerEngine). TE compiles C++/CUDA extensions against cuDNN headers, which are bundled with conda/mamba but **not** with pip-only installs. We recommend using [miniconda](https://www.anaconda.com/docs/getting-started/miniconda/install) or [micromamba](https://mamba.readthedocs.io/en/latest/installation/micromamba-installation.html) for FP8:
+
 ```bash
+# Create a conda/mamba env with CUDA toolkit + cuDNN
+conda create -n torch python=3.10 pytorch pytorch-cuda=12.8 -c pytorch -c nvidia
+conda activate torch
+
+# Install Transformer Engine (needs cuDNN headers from conda)
 pip install --no-build-isolation transformer_engine[pytorch]
+
+# Install project deps and run with FP8
+pip install -e .
 USE_FP8=1 python train.py
 ```
+
+If you don't have a compatible GPU, just skip this — BF16 (the default) works on any NVIDIA GPU.
 
 ## Running the agent
 
 Spin up your Claude/Codex or whatever you want in this repo, then prompt:
 
 ```
-Hi have a look at program.md and let's kick off a new experiment! let's do the setup first.
+Hi have a look at program.md and let's kick off a new experiment!
 ```
 
 The `program.md` file is the "skill" that drives the autonomous agent. `AGENTS.md` provides the full protocol.
@@ -84,7 +98,7 @@ x-transformers/         — x-transformers library (git submodule, read-only)
 ## Credits
 
 - [Karpathy's autoresearch](https://github.com/karpathy/autoresearch) — the original concept
-- [Phil Wang's x-transformers](https://github.com/lucidrains/x-transformers) — the model library
+- [Phil Wang's x-transformers](https://github.com/lucidrains/x-transformers) here is [my fork](https://github.com/TimS-ml/x-transformers) — the model library
 
 ## License
 
