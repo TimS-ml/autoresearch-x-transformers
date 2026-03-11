@@ -2,14 +2,15 @@
 Autoresearch pretraining script using x-transformers.
 Single-GPU, single-file, time-budgeted training on enwik8.
 
-Hardware: Any NVIDIA GPU with >= 8 GB VRAM (tested on RTX 4090 Laptop).
+Hardware: Any NVIDIA GPU with >= 8 GB VRAM (tested on RTX 4090).
           FP8 supported on Ada Lovelace / Hopper / Blackwell (SM89+).
-Precision: BF16 (default), FP8 via NVIDIA Transformer Engine (optional)
+Precision: BF16 (default), FP8 via torchao (optional), FP16 (optional)
 Optimizer: MuonAdamAtan2 (Muon for matrix params, AdamAtan2 for rest)
 
 Usage:
     python train.py                      # BF16 (default, always works)
-    USE_FP8=1 python train.py            # FP8 via Transformer Engine
+    USE_FP8=1 python train.py            # FP8 via torchao (SM89+)
+    USE_FP16=1 python train.py           # FP16 instead of BF16
 
 References:
     - x-transformers: https://github.com/lucidrains/x-transformers
@@ -44,24 +45,22 @@ from x_transformers import TransformerWrapper, Decoder
 from x_transformers.autoregressive_wrapper import AutoregressiveWrapper
 
 # ---------------------------------------------------------------------------
-# FP8 support (optional, via Transformer Engine)
+# Precision selection: FP8 (torchao), FP16, or BF16 (default)
 # ---------------------------------------------------------------------------
 
 USE_FP8 = os.environ.get("USE_FP8", "0") == "1"
+USE_FP16 = os.environ.get("USE_FP16", "0") == "1"
 fp8_available = False
 
 if USE_FP8:
     try:
-        import transformer_engine.pytorch as te
-        from transformer_engine.common import recipe
+        from torchao.float8 import Float8LinearConfig, convert_to_float8_training
 
         fp8_available = True
-        print("FP8: Transformer Engine loaded successfully")
+        print("FP8: torchao float8 training loaded successfully")
     except ImportError:
-        print("FP8: transformer_engine not installed, falling back to BF16")
-        print(
-            "  Install with: pip install --no-build-isolation transformer_engine[pytorch]"
-        )
+        print("FP8: torchao not installed, falling back to BF16")
+        print("  Install with: pip install torchao")
         USE_FP8 = False
 
 # ---------------------------------------------------------------------------
@@ -112,12 +111,8 @@ VALIDATE_EVERY = 100  # validation frequency (in steps)
 GENERATE_EVERY = 500  # text generation frequency (in steps)
 GENERATE_LENGTH = 512  # tokens to generate for qualitative eval
 
-# FP8 recipe (only used if USE_FP8=1 and transformer_engine available)
-FP8_FORMAT = "HYBRID"  # E4M3 forward, E5M2 backward
-FP8_AMAX_HISTORY = 16  # amax history length for delayed scaling
-
 # GPU performance reference for MFU estimation
-# RTX 4090 Laptop BF16 peak: ~330 TFLOPS (adjust for your GPU)
+# RTX 4090 BF16 peak: ~330 TFLOPS (adjust for your GPU)
 GPU_BF16_PEAK_FLOPS = 330e12
 
 # ---------------------------------------------------------------------------
@@ -268,20 +263,20 @@ def get_lr_multiplier(progress):
 
 
 # ---------------------------------------------------------------------------
-# FP8 context manager
+# Precision context manager
 # ---------------------------------------------------------------------------
 
 
 def get_precision_context():
-    """Return the appropriate precision context manager."""
-    if USE_FP8 and fp8_available:
-        fp8_recipe = recipe.DelayedScaling(
-            fp8_format=recipe.Format.HYBRID,
-            amax_history_len=FP8_AMAX_HISTORY,
-            amax_compute_algo="max",
-        )
-        return te.fp8_autocast(enabled=True, fp8_recipe=fp8_recipe)
+    """Return the appropriate AMP context manager.
+
+    FP8 note: torchao FP8 converts nn.Linear layers in-place to use FP8
+    compute kernels. The autocast wrapper is still BF16 for non-linear ops.
+    """
+    if USE_FP16:
+        return torch.amp.autocast(device_type="cuda", dtype=torch.float16)
     else:
+        # BF16 for both default and FP8 modes (FP8 is handled by torchao layer conversion)
         return torch.amp.autocast(device_type="cuda", dtype=torch.bfloat16)
 
 
@@ -308,7 +303,12 @@ def main():
     torch.cuda.manual_seed(42)
     torch.set_float32_matmul_precision("high")
 
-    precision_tag = "FP8" if (USE_FP8 and fp8_available) else "BF16"
+    if USE_FP8 and fp8_available:
+        precision_tag = "FP8"
+    elif USE_FP16:
+        precision_tag = "FP16"
+    else:
+        precision_tag = "BF16"
     print(f"Precision: {precision_tag}")
     print(f"Device: {torch.cuda.get_device_name(0)}")
     print(f"VRAM: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.1f} GB")
@@ -330,6 +330,15 @@ def main():
 
     num_params = sum(p.numel() for p in ar_model.parameters())
     print(f"Parameters: {num_params:,} ({num_params / 1e6:.1f}M)")
+
+    # FP8: convert nn.Linear layers to use FP8 compute (before optimizer creation)
+    # Only convert the transformer body (attn_layers), skip embedding/logits which
+    # may have dimensions not aligned to FP8's 16-byte requirement.
+    # pad_inner_dim=True handles cases where batch*seq isn't divisible by 16.
+    if USE_FP8 and fp8_available:
+        fp8_config = Float8LinearConfig(pad_inner_dim=True)
+        convert_to_float8_training(ar_model.net.attn_layers, config=fp8_config)
+        print("FP8: transformer attention/FFN layers converted to float8 training")
 
     flops_per_token = estimate_flops_per_token(
         num_params, MAX_SEQ_LEN, MODEL_DEPTH, MODEL_HEADS, MODEL_DIM

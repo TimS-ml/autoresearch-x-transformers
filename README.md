@@ -1,4 +1,4 @@
-Autonomous LLM-driven research on character-level language modeling using my fork of [x-transformers](https://github.com/TimS-ml/x-transformers). Runs on any NVIDIA GPU with under 8 GB VRAM. FP8 training supported on Ada Lovelace / Hopper / Blackwell GPUs.
+Autonomous LLM-driven research on character-level language modeling using my fork of [x-transformers](https://github.com/TimS-ml/x-transformers). Runs on any NVIDIA GPU with >= 8 GB VRAM. FP8 training supported on Ada Lovelace / Hopper / Blackwell GPUs via [torchao](https://github.com/pytorch/ao).
 
 ![teaser](progress.png)
 
@@ -26,46 +26,30 @@ By design, training runs for a **fixed 5-minute time budget** (wall clock, exclu
 
 ## Quick start
 
-**Requirements:** A single NVIDIA GPU (>= 8 GB VRAM), Python 3.10+, [uv](https://docs.astral.sh/uv/).
+**Requirements:** A single NVIDIA GPU (>= 8 GB VRAM), Python 3.10+. Any package manager works (uv / conda / mamba / pip).
 
 ```bash
-# 1. Install uv project manager (if you don't already have it)
-curl -LsSf https://astral.sh/uv/install.sh | sh
+# 1. Clone the repo
+git clone --recursive https://github.com/TimS-ml/autoresearch-x-transformers
+cd autoresearch-x-transformers
 
-# 2. Clone and set up my fork of x-transformers with fp8 support
-git clone https://github.com/TimS-ml/x-transformers
-uv sync
+# 2. Install dependencies (pick one)
+uv sync                  # uv (recommended)
+# or: pip install -e .   # pip / conda / mamba
 
 # 3. Verify data exists
 ls x-transformers/data/enwik8.gz
 
 # 4. Verify imports work
-uv run python -c "from x_transformers import TransformerWrapper; print('OK')"
+python -c "from x_transformers import TransformerWrapper; print('OK')"
 
 # 5. Run a single training experiment (~5 min)
-uv run train.py
+python train.py                  # BF16 (default)
+USE_FP8=1 python train.py       # FP8 via torchao (Ada Lovelace+ GPUs)
+USE_FP16=1 python train.py      # FP16
 ```
 
-If the above commands all work ok, your setup is working and you can go into autonomous research mode.
-
-### Optional: FP8 training
-
-FP8 requires an **Ada Lovelace / Hopper / Blackwell** GPU (RTX 40xx, A100, H100, etc.) and NVIDIA's [Transformer Engine](https://github.com/NVIDIA/TransformerEngine). TE compiles C++/CUDA extensions against cuDNN headers, which are bundled with conda/mamba but **not** with pip-only installs. We recommend using [miniconda](https://www.anaconda.com/docs/getting-started/miniconda/install) or [micromamba](https://mamba.readthedocs.io/en/latest/installation/micromamba-installation.html) for FP8:
-
-```bash
-# Create a conda/mamba env with CUDA toolkit + cuDNN
-conda create -n torch python=3.10 pytorch pytorch-cuda=12.8 -c pytorch -c nvidia
-conda activate torch
-
-# Install Transformer Engine (needs cuDNN headers from conda)
-pip install --no-build-isolation transformer_engine[pytorch]
-
-# Install project deps and run with FP8
-pip install -e .
-USE_FP8=1 python train.py
-```
-
-If you don't have a compatible GPU, just skip this — BF16 (the default) works on any NVIDIA GPU.
+FP8 requires an **Ada Lovelace / Hopper / Blackwell** GPU (RTX 40xx, A100, H100, etc.) and is handled by [torchao](https://github.com/pytorch/ao) (included in dependencies). If you don't have a compatible GPU, just skip `USE_FP8=1` — BF16 (the default) works on any NVIDIA GPU.
 
 ## Running the agent
 

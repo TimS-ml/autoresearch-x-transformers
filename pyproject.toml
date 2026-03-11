@@ -14,12 +14,10 @@ dependencies = [
     "ema-pytorch",
     "adam-atan2-pytorch",
     "x-transformers @ git+https://github.com/TimS-ml/x-transformers.git",
+    "torchao>=0.16.0",
 ]
 
 [project.optional-dependencies]
-fp8 = [
-    "transformer_engine",
-]
 analysis = [
     "jupytext",
 ]
