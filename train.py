@@ -80,7 +80,7 @@ except ImportError:
 # Constants (fixed, do not modify)
 # ---------------------------------------------------------------------------
 
-MAX_SEQ_LEN = 1024  # context length for enwik8 training
+MAX_SEQ_LEN = 4096  # context length for enwik8 training
 TIME_BUDGET = 300  # training time budget in seconds (5 minutes)
 EVAL_TOKENS = 5_000_000  # validation set size (5M bytes)
 
@@ -89,22 +89,22 @@ EVAL_TOKENS = 5_000_000  # validation set size (5M bytes)
 # ---------------------------------------------------------------------------
 
 # Model architecture (x-transformers Decoder)
-MODEL_DIM = 512  # hidden dimension
+MODEL_DIM = 448  # hidden dimension
 MODEL_DEPTH = 6  # number of transformer layers
-MODEL_HEADS = 8  # number of attention heads
+MODEL_HEADS = 7  # number of attention heads
 VOCAB_SIZE = 256  # byte-level (char-level), one token per byte value
 
 # Optimization
-LEARNING_RATE = 1e-4  # base learning rate
-BATCH_SIZE = 4  # per-device micro-batch size
-GRADIENT_ACCUMULATE_EVERY = 4  # gradient accumulation steps
-WEIGHT_DECAY = 0.01  # AdamW weight decay
-GRAD_CLIP = 0.5  # gradient norm clipping
+LEARNING_RATE = 1.1e-2  # slightly above 1e-2 with clip=0.8
+BATCH_SIZE = 24  # per-device micro-batch size
+GRADIENT_ACCUMULATE_EVERY = 1  # gradient accumulation steps
+WEIGHT_DECAY = 0.1  # AdamW weight decay
+GRAD_CLIP = 0.8  # gradient norm clipping (between 0.5 and 1.0)
 
 # LR Schedule (time-based)
 WARMUP_RATIO = 0.05  # fraction of time budget for LR warmup
-WARMDOWN_RATIO = 0.3  # fraction of time budget for LR cooldown (cosine)
-FINAL_LR_FRAC = 0.0  # final LR as fraction of initial
+WARMDOWN_RATIO = 0.47  # fine-tuning between 0.45 and 0.5
+FINAL_LR_FRAC = 0.02  # final LR as fraction of initial
 
 # Logging
 VALIDATE_EVERY = 100  # validation frequency (in steps)
@@ -203,15 +203,25 @@ def build_model():
     model = TransformerWrapper(
         num_tokens=VOCAB_SIZE,
         max_seq_len=MAX_SEQ_LEN,
+        post_emb_norm=True,  # LayerNorm after embeddings (BLOOM/YaLM-style)
+        emb_frac_gradient=0.1,  # GLM-130B: reduce embedding gradient flow
         attn_layers=Decoder(
             dim=MODEL_DIM,
             depth=MODEL_DEPTH,
             heads=MODEL_HEADS,
             rotary_pos_emb=True,  # RoPE (standard for modern transformers)
+            rotary_xpos=True,  # xPos: position-dependent scaling for long context
             attn_flash=True,  # PyTorch SDP flash attention
             attn_qk_norm=True,  # QK normalization for training stability
-            ff_relu_squared=True,  # ReLU^2 activation (from Primer)
+            attn_laser=True,  # LASER: gradient enhancement via exponentiated values
+            ff_glu=True,  # Gated Linear Unit
+            ff_swish=True,  # SwiGLU activation (PaLM/LLaMA-style)
+            ff_glu_mult_bias=True,  # learnable bias in GLU gate
             use_rmsnorm=True,  # RMSNorm instead of LayerNorm
+            add_value_residual=True,  # ResFormer value residuals
+            shift_tokens=1,  # shift features by 1 token (helps char-level)
+            softclamp_output=True,  # Gemma 2: soft-clamp final hidden states
+            zero_init_branch_output=True,  # GPT-NeoX: zero-init output projections
         ),
     )
 
@@ -236,6 +246,11 @@ def build_optimizer(model):
             params=inner_model.parameters(),
             remove_muon_params_from_params=True,
             lr=LEARNING_RATE,
+            weight_decay=0.001,  # very small decoupled WD
+            decoupled_wd=True,
+            betas=(0.92, 0.99),  # AdamAtan2 betas matching muon_beta1
+            muon_rms_factor=0.1,  # smaller Muon updates (default 0.2)
+            muon_beta1=0.92,  # less momentum than default 0.95
         )
     else:
         optimizer = torch.optim.AdamW(
@@ -332,9 +347,6 @@ def main():
     print(f"Parameters: {num_params:,} ({num_params / 1e6:.1f}M)")
 
     # FP8: convert nn.Linear layers to use FP8 compute (before optimizer creation)
-    # Only convert the transformer body (attn_layers), skip embedding/logits which
-    # may have dimensions not aligned to FP8's 16-byte requirement.
-    # pad_inner_dim=True handles cases where batch*seq isn't divisible by 16.
     if USE_FP8 and fp8_available:
         fp8_config = Float8LinearConfig(pad_inner_dim=True)
         convert_to_float8_training(ar_model.net.attn_layers, config=fp8_config)
